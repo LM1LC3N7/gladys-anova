@@ -53,12 +53,23 @@ they send one of these shapes.
 The **Stop cooking** button of each device, and the scene action **Anova:
 stop cooking**, need no option and are never refused: not by the start option,
 nor by a pause asked by Anova (HTTP 429), nor by a refused token (one attempt
-per click), nor by an unreadable `/data`. Without a connection, one is opened
-at once; if it cannot open within 3.5 s, the stop is kept (also in `/data`,
-for 10 min) and sent as soon as a connection opens. It is sent again (3 times
-at most) while the device still reports the same cook 20 s after it; it is not
-sent again when a different cook is shown (one started afterwards from the app
-or the device). A stop also cancels a start not yet sent.
+per click, and one for a stop kept across a restart), nor by a slow or
+unreadable `/data`. Without a connection, one is opened at once; if it cannot
+open within 3.5 s, the stop is kept (also in `/data`, for 10 min) and sent as
+soon as a connection opens.
+
+A stop is sent with a ping: without the answer, a message or the pong within
+1.5 s, the connection is taken as dead (a router restarted, for instance), cut
+and opened again at once, and the stop is sent on the new one (3 dead
+connections at most per stop, then the backoff). Such a send does not count.
+
+It is sent 3 times in all at most, again while the device still reports the
+same cook 20 s after it; it is not sent again when a different cook is shown
+(one started afterwards from the app or the device). A kept stop whose cook is
+known waits for the first state of the device on the new connection (2 s at
+most): idle, it is done; another cook, it is not sent; the same cook, or no
+state, it is sent. The identity of the cook is kept in `/data`. A stop also
+cancels a start not yet sent.
 
 What a stop cannot do: reach Anova without a token, or before the token is
 read from Gladys after a restart (the token is never written to `/data`).
@@ -85,8 +96,14 @@ The start is refused, and nothing is sent, when:
   connection from the last 30 minutes;
 - the cooker is already cooking (or its state is unknown), or reports a
   problem (water level, leak, too hot, failure);
+- the cooker is starting or updating (state unknown or busy);
+- another start of the cooker is in progress, or no state came since the last
+  start (a start without confirmation blocks the next one until a state after
+  it);
 - a stop of the cooker is in progress, or was pressed meanwhile;
-- `/data` cannot be written (the start is written there before it leaves).
+- `/data` cannot be written within 10 s (the start is written there before it
+  leaves; past 10 s, nothing is sent, so Gladys never sees a failure while the
+  water heats).
 
 Results: `started` (a state shows the cook), `accepted` (Anova answered ok, no
 state yet) or `sent` (no answer: without confirmation). A start refused by
@@ -113,7 +130,9 @@ stop once per cook when the cooker reports its timer done.
 - HTTP 429: pause for its Retry-After (1 min to 6 h, 15 min without), kept in
   `/data` across a restart. A stop still goes through.
 - Refused token: an HTTP 401, or (what Anova does with an invalid token) a
-  connection closed twice in a row right after it opened, without any message. Nothing is sent again by itself: save a new
+  connection closed by Anova with code 1005 within 5 s of its opening, without
+  any message, twice in a row. A network drop or another close code (1006,
+  1012, 1013…) is never a refusal. Nothing is sent again by itself: save a new
   token, or click **Test the connection** (one new try). Only 8 bits of a hash
   of the refused token are kept in `/data`. A 403 or any other status is not a
   refusal: the integration backs off.

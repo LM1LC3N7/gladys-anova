@@ -116,8 +116,13 @@ export const T = {
     ),
   lost: (wait) =>
     both(
-      `The connection to Anova was closed (Anova closes it when its rate limit is reached). Connecting again in ${wait.en}.`,
-      `La connexion à Anova a été fermée (Anova la ferme quand sa limite de débit est atteinte). Nouvelle connexion dans ${wait.fr}.`,
+      `The connection to Anova was closed (by Anova or the network; Anova also closes it when its rate limit is reached). Connecting again in ${wait.en}.`,
+      `La connexion à Anova a été fermée (par Anova ou le réseau ; Anova la ferme aussi quand sa limite de débit est atteinte). Nouvelle connexion dans ${wait.fr}.`,
+    ),
+  dead: (wait) =>
+    both(
+      `The connection to Anova stopped answering and was cut. Connecting again in ${wait.en}.`,
+      `La connexion à Anova ne répondait plus et a été coupée. Nouvelle connexion dans ${wait.fr}.`,
     ),
   dataUnreadable: both(
     'The state file in /data cannot be read: nothing is sent until it can (read again every 10 s). "Test the connection" starts again from an empty state.',
@@ -196,6 +201,14 @@ export const ERRORS = {
   dataNotSaved: both(
     'The state could not be written to /data: nothing was sent.',
     "L'état n'a pas pu être écrit dans /data : rien n'a été envoyé.",
+  ),
+  previousStart: both(
+    'No state of the cooker since the last start yet: nothing was sent. Try again in a minute.',
+    "Pas encore d'état du cuiseur depuis le dernier démarrage : rien n'a été envoyé. Réessayez dans une minute.",
+  ),
+  tooLate: both(
+    'Writing to /data took too long: nothing was sent.',
+    "L'écriture dans /data a pris trop de temps : rien n'a été envoyé.",
   ),
   refusedByAnova: both(
     'Anova refused the command: nothing was started.',

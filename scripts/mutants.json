@@ -20,8 +20,8 @@
   {
     "name": "failed /data write does not block the start",
     "file": "src/app.js",
-    "from": "if (!(await this.saveMemory())) {",
-    "to": "if (!(await this.saveMemory()) && false) {"
+    "from": "if (saved !== true) {",
+    "to": "if (false) {"
   },
   {
     "name": "temperature upper bound",
@@ -178,5 +178,257 @@
     "file": "src/app.js",
     "from": "if (this.silentCloses >= 2) {",
     "to": "if (this.silentCloses >= 1) {"
+  },
+  {
+    "name": "R1 freshness of the start state removed",
+    "file": "src/app.js",
+    "from": " || this.monotonic() - entry.at > TIMINGS.freshState",
+    "to": ""
+  },
+  {
+    "name": "R2 stopWindow removed (resend without identity for 10 min)",
+    "file": "src/app.js",
+    "from": "        (record.cookKey === undefined || key === undefined) &&\n        mono - record.firstAt > TIMINGS.stopWindow",
+    "to": "        false"
+  },
+  {
+    "name": "R4 unknown state confirms the stop",
+    "file": "src/app.js",
+    "from": "record.sentAt !== undefined && entry.at > record.sentAt && entry.values.cooking === false",
+    "to": "record.sentAt !== undefined && entry.at > record.sentAt && entry.values.cooking !== true"
+  },
+  {
+    "name": "R5 queued stop not sent at connection",
+    "file": "src/app.js",
+    "from": "      } else {\n        this.sendStop(record, this.monotonic() + TIMINGS.stopBudget).catch(() => {});\n      }\n    }\n  }",
+    "to": "      }\n    }\n  }"
+  },
+  {
+    "name": "R6 run(): stop waits for the pause",
+    "file": "src/app.js",
+    "from": "    if (mono < this.pauseUntil && !stopWaiting) {",
+    "to": "    if (mono < this.pauseUntil) {"
+  },
+  {
+    "name": "R7 resume(): kept stop waits for the backoff",
+    "file": "src/app.js",
+    "from": "    if (this.stops.size > 0) {\n      // A stop waits: no backoff, no pause.",
+    "to": "    if (false) {"
+  },
+  {
+    "name": "R8 state not checked again just before the start send",
+    "file": "src/app.js",
+    "from": "      const device = check();\n      const sentAt",
+    "to": "      const device = this.devices.get(cookerId);\n      const sentAt"
+  },
+  {
+    "name": "R9 stop does not wake a start waiting",
+    "file": "src/app.js",
+    "from": "      if (watcher.cookerId === cookerId) {\n        watcher.resolve(false);\n      }",
+    "to": "      if (false) {\n        watcher.resolve(false);\n      }"
+  },
+  {
+    "name": "R10 stop kept beyond 10 min (recheck)",
+    "file": "src/app.js",
+    "from": "    if (mono - record.firstAt > TIMINGS.stopKeep) {\n      this.forgetStop(record, 'given up after 10 min without confirmation');",
+    "to": "    if (false) {\n      this.forgetStop(record, 'given up after 10 min without confirmation');"
+  },
+  {
+    "name": "R12 minutes upper bound",
+    "file": "src/app.js",
+    "from": "minutes > maxMinutes",
+    "to": "minutes > maxMinutes + 1"
+  },
+  {
+    "name": "R13 temperature lower bound",
+    "file": "src/app.js",
+    "from": "temperature < minTemperature",
+    "to": "temperature < minTemperature - 1"
+  },
+  {
+    "name": "R14 busy/unknown state accepted for a start",
+    "file": "src/app.js",
+    "from": "['low_water', 'high_temperature', 'failure', 'busy', 'unknown'].includes(",
+    "to": "['low_water', 'high_temperature', 'failure'].includes("
+  },
+  {
+    "name": "R15 redirects followed",
+    "file": "src/channel.js",
+    "from": "  followRedirects: false,",
+    "to": "  followRedirects: true,"
+  },
+  {
+    "name": "R16 compression on",
+    "file": "src/channel.js",
+    "from": "  perMessageDeflate: false,",
+    "to": "  perMessageDeflate: true,"
+  },
+  {
+    "name": "R17 token not encoded in the URL",
+    "file": "src/constants.js",
+    "from": "token=${encodeURIComponent(token)}",
+    "to": "token=${token}"
+  },
+  {
+    "name": "R18 token regex allows controls",
+    "file": "src/config.js",
+    "from": "const TOKEN = /^anova-[\\x21-\\x7e]+$/;",
+    "to": "const TOKEN = /^anova-[^]+$/;"
+  },
+  {
+    "name": "R19 429 floor removed",
+    "file": "src/app.js",
+    "from": "Math.max(err.retryAfter ?? TIMINGS.tooManyDefault, TIMINGS.tooManyMin)",
+    "to": "(err.retryAfter ?? TIMINGS.tooManyDefault)"
+  },
+  {
+    "name": "R20 no recheck armed after a send",
+    "file": "src/app.js",
+    "from": "      this.keepStop(record);\n      this.armRecheck(record);",
+    "to": "      this.keepStop(record);"
+  },
+  {
+    "name": "R21 recheck decides on a state before the send",
+    "file": "src/app.js",
+    "from": "if (latest && record.sentAt !== undefined && latest.at > record.sentAt) {",
+    "to": "if (latest && record.sentAt !== undefined) {"
+  },
+  {
+    "name": "R22 stop budget unbounded for Gladys",
+    "file": "src/app.js",
+    "from": "await this.waitFor(() => this.channel !== undefined || !this.linking, deadline - start);",
+    "to": "await this.waitFor(() => this.channel !== undefined || !this.linking, 60_000);"
+  },
+  {
+    "name": "R23 stable connection does not reset backoff",
+    "file": "src/app.js",
+    "from": "      this.stable = true;\n      this.memory.backoff.level = 0;",
+    "to": "      this.stable = true;"
+  },
+  {
+    "name": "R24 publisher ignores 300/min",
+    "file": "src/publisher.js",
+    "from": "const room = Math.min(LIMITS.statesPerMinute - this.window.length, LIMITS.statesPerRequest);",
+    "to": "const room = LIMITS.statesPerRequest;"
+  },
+  {
+    "name": "R26 persisted pause not bounded to 6 h",
+    "file": "src/store.js",
+    "from": "const until = ahead(raw?.pause?.until, wall, TIMINGS.tooManyMax);",
+    "to": "const until = ahead(raw?.pause?.until, wall, 1e12);"
+  },
+  {
+    "name": "R27 kept stops older than 10 min reloaded",
+    "file": "src/store.js",
+    "from": "const atWall = recent(s?.at, wall, TIMINGS.stopKeep);",
+    "to": "const atWall = recent(s?.at, wall, TIMINGS.persistedMax);"
+  },
+  {
+    "name": "R28 silence refresh during a start",
+    "file": "src/app.js",
+    "from": "        this.starting.size === 0 &&",
+    "to": ""
+  },
+  {
+    "name": "R29 two connections at once",
+    "file": "src/app.js",
+    "from": "    if (this.channel || !this.config.token) {\n      return Promise.resolve();",
+    "to": "    if (!this.config.token) {\n      return Promise.resolve();"
+  },
+  {
+    "name": "R30 unknown unit target not dropped (job)",
+    "file": "src/protocol.js",
+    "from": "  } else if (unit !== 'C') {\n    target = undefined; // unit unknown: never guessed\n  }",
+    "to": "  }"
+  },
+  {
+    "name": "R31 handshake timeout removed",
+    "file": "src/channel.js",
+    "from": "  handshakeTimeout: TIMINGS.handshakeTimeout,",
+    "to": ""
+  },
+  {
+    "name": "R33 busy start not refused",
+    "file": "src/app.js",
+    "from": "    if (this.starting.has(cookerId)) {\n      throw userError(ERRORS.busy, L);\n    }",
+    "to": ""
+  },
+  {
+    "name": "R34 kept stop not reloaded from /data",
+    "file": "src/app.js",
+    "from": "    for (const s of this.memory.stops) {\n      if (!this.stops.has(s.cookerId)) {",
+    "to": "    for (const s of []) {\n      if (!this.stops.has(s.cookerId)) {"
+  },
+  {
+    "name": "R35 refusal mark not compared (blocked any token)",
+    "file": "src/app.js",
+    "from": "if (block && block.mark === refusedMark(this.config.token)) {",
+    "to": "if (block) {"
+  },
+  {
+    "name": "R36 silent closes counter not reset by a live close",
+    "file": "src/app.js",
+    "from": "    } else {\n      this.silentCloses = 0;\n    }",
+    "to": "    }"
+  },
+  {
+    "name": "I1 send counted without proof of life",
+    "file": "src/app.js",
+    "from": "    if (alive()) {\n      record.sends += 1;",
+    "to": "    if (true) {\n      record.sends += 1;"
+  },
+  {
+    "name": "I1 dead connections unbounded",
+    "file": "src/app.js",
+    "from": "if (record.probes >= TIMINGS.stopProbes) {",
+    "to": "if (record.probes >= 1000) {"
+  },
+  {
+    "name": "I2 messages with the 101 dropped",
+    "file": "src/app.js",
+    "from": "if (this.connecting === channel && (channel.early ??= []).length < 50) {",
+    "to": "if (false) {"
+  },
+  {
+    "name": "I3 kept stop ignores another cook",
+    "file": "src/app.js",
+    "from": "} else if (key !== undefined && record.cookKey !== undefined && key !== record.cookKey) {",
+    "to": "} else if (false) {"
+  },
+  {
+    "name": "I3 cook identity not reloaded",
+    "file": "src/app.js",
+    "from": "          cookKey: s.cookKey,",
+    "to": "          cookKey: undefined,"
+  },
+  {
+    "name": "I4 any close code counted",
+    "file": "src/app.js",
+    "from": "      err?.code === 1005 &&\n",
+    "to": ""
+  },
+  {
+    "name": "I4 late close counted",
+    "file": "src/app.js",
+    "from": "      this.monotonic() - this.openedAt <= TIMINGS.silentCloseWindow\n",
+    "to": "      true\n"
+  },
+  {
+    "name": "I4 kept stop held by a refusal mark",
+    "file": "src/app.js",
+    "from": "      if (this.stops.size > 0) {\n        this.connect({ force: true });\n      }\n      return;",
+    "to": "      return;"
+  },
+  {
+    "name": "I5 attempt waits for /data",
+    "file": "src/app.js",
+    "from": "await this.bounded(this.saveMemory(), TIMINGS.dataWriteWait);",
+    "to": "await this.saveMemory();"
+  },
+  {
+    "name": "I6 second start on the old idle state",
+    "file": "src/app.js",
+    "from": "if (lastStart !== undefined && entry.at <= lastStart) {",
+    "to": "if (false) {"
   }
 ]

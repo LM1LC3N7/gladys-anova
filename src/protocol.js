@@ -400,8 +400,13 @@ function ovenState(state) {
         ? numberIn(at(nodes, 'timer', 'current'), 0, 360_000)
         : undefined,
     alert: alertOf(flags),
-    cookKey: undefined,
+    cookKey: cookId(at(state, 'cook', 'cookId')),
   };
+}
+
+/** A cook identity from Anova (bounded printable text), else undefined. */
+function cookId(value) {
+  return typeof value === 'string' && /^[\x21-\x7e]{1,64}$/.test(value) ? value : undefined;
 }
 
 /**

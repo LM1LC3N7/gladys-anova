@@ -55,6 +55,14 @@ Anova API Terms of Use (<https://developer.anovaculinary.com/terms>). The
 official example repository (`anova-culinary/developer-project-wifi`) has no
 license file: nothing of its code is used.
 
+## anova-oven-rs (documentation only)
+
+The field names of the oven state (`nodes.temperatureBulbs`, `nodes.timer`,
+`nodes.door`, `nodes.waterTank`, `state.mode`, `cook.cookId`) were read as
+facts in `docs/oven-websocket-api.md` of
+<https://github.com/robdimsdale/anova-oven-rs> (MIT or Apache-2.0). No code
+of it is used.
+
 ## ws
 
 The `ws` package (MIT, <https://github.com/websockets/ws>) is a runtime

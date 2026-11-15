@@ -53,13 +53,24 @@ les autres types sont lus s'ils envoient l'une de ces formes.
 Le bouton **Arrêter la cuisson** de chaque appareil, et l'action de scène
 **Anova : arrêter la cuisson**, ne demandent aucune option et ne sont jamais
 refusés : ni par l'option de démarrage, ni par une pause demandée par Anova
-(HTTP 429), ni par un jeton refusé (un essai par clic), ni par un `/data`
-illisible. Sans connexion, une connexion est ouverte tout de suite ; si elle ne
-s'ouvre pas en 3,5 s, l'arrêt est gardé (aussi dans `/data`, 10 min) et envoyé
-dès qu'une connexion s'ouvre. Il est renvoyé (3 fois au plus) tant que
-l'appareil indique la même cuisson 20 s après ; il n'est pas renvoyé si une
-autre cuisson apparaît (lancée ensuite depuis l'application ou l'appareil). Un
-arrêt annule aussi un démarrage pas encore envoyé.
+(HTTP 429), ni par un jeton refusé (un essai par clic, et un pour un arrêt
+gardé au redémarrage), ni par un `/data` lent ou illisible. Sans connexion,
+une connexion est ouverte tout de suite ; si elle ne s'ouvre pas en 3,5 s,
+l'arrêt est gardé (aussi dans `/data`, 10 min) et envoyé dès qu'une connexion
+s'ouvre.
+
+Un arrêt part avec un ping : sans la réponse, un message ou le pong sous 1,5 s,
+la connexion est jugée morte (une box redémarrée, par exemple), coupée et
+rouverte aussitôt, et l'arrêt part sur la nouvelle (3 connexions mortes au plus
+par arrêt, puis le délai entre essais). Un tel envoi ne compte pas.
+
+Il part 3 fois en tout au plus, de nouveau tant que l'appareil indique la même
+cuisson 20 s après ; il n'est pas renvoyé si une autre cuisson apparaît (lancée
+ensuite depuis l'application ou l'appareil). Un arrêt gardé dont la cuisson est
+connue attend le premier état de l'appareil sur la nouvelle connexion (2 s au
+plus) : à l'arrêt, c'est fini ; une autre cuisson, il ne part pas ; la même
+cuisson, ou pas d'état, il part. L'identité de la cuisson est gardée dans
+`/data`. Un arrêt annule aussi un démarrage pas encore envoyé.
 
 Ce qu'un arrêt ne peut pas faire : joindre Anova sans jeton, ou avant que le
 jeton soit lu depuis Gladys après un redémarrage (le jeton n'est jamais écrit
@@ -87,8 +98,14 @@ Le démarrage est refusé, et rien n'est envoyé, quand :
   en cours depuis moins de 30 minutes ;
 - le cuiseur cuit déjà (ou son état est inconnu), ou signale un problème
   (niveau d'eau, fuite, trop chaud, panne) ;
+- le cuiseur démarre ou se met à jour (état inconnu ou occupé) ;
+- un autre démarrage du cuiseur est en cours, ou aucun état n'est arrivé depuis
+  le dernier démarrage (un démarrage sans confirmation bloque le suivant jusqu'à
+  un état reçu après lui) ;
 - un arrêt du cuiseur est en cours, ou a été demandé entre-temps ;
-- `/data` ne peut pas être écrit (le démarrage y est noté avant de partir).
+- `/data` ne peut pas être écrit en 10 s (le démarrage y est noté avant de
+  partir ; au-delà de 10 s, rien n'est envoyé : Gladys n'affiche jamais un
+  échec pendant que l'eau chauffe).
 
 Résultats : `started` (un état montre la cuisson), `accepted` (Anova a répondu
 ok, pas encore d'état) ou `sent` (pas de réponse : sans confirmation). Un
@@ -117,7 +134,9 @@ indique sa minuterie finie.
 - HTTP 429 : pause de la durée de son Retry-After (1 min à 6 h, 15 min sans),
   gardée dans `/data` au redémarrage. Un arrêt passe quand même.
 - Jeton refusé : un HTTP 401, ou (ce que fait Anova d'un jeton invalide) une
-  connexion fermée deux fois de suite juste après son ouverture, sans aucun message. Rien n'est renvoyé tout seul : enregistrez un
+  connexion fermée par Anova avec le code 1005 dans les 5 s après son
+  ouverture, sans aucun message, deux fois de suite. Une coupure réseau ou un
+  autre code (1006, 1012, 1013…) n'est jamais un refus. Rien n'est renvoyé tout seul : enregistrez un
   nouveau jeton, ou cliquez sur **Tester la connexion** (un nouvel essai). Seuls
   8 bits d'une empreinte du jeton refusé sont gardés dans `/data`. Un 403 ou un
   autre code n'est pas un refus : l'intégration espace ses essais.

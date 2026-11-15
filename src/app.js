@@ -100,6 +100,8 @@ export class AnovaApp {
     this.stopCount = new Map();
     /** Cookers with a start in progress. */
     this.starting = new Set();
+    /** cookerId -> when the last start left (monotonic). */
+    this.startSent = new Map();
     /** Waiters of a state: { cookerId, match, resolve }. */
     this.watchers = new Set();
     /** Waiters of a connection step (waitFor). */
@@ -224,6 +226,10 @@ export class AnovaApp {
     if (this.memory.pause) {
       this.pauseUntil = Math.max(this.pauseUntil, mono + (this.memory.pause.until - wall));
     }
+    // The last start: no other start before a state received after it.
+    if (this.memory.start && !this.startSent.has(this.memory.start.cookerId)) {
+      this.startSent.set(this.memory.start.cookerId, mono - (wall - this.memory.start.at));
+    }
     // Stops kept in /data: sent at the next connection (the token is in the configuration only).
     for (const s of this.memory.stops) {
       if (!this.stops.has(s.cookerId)) {
@@ -234,10 +240,12 @@ export class AnovaApp {
           firstAt: mono - (wall - s.at),
           wallAt: s.at,
           sends: s.sends,
+          probes: 0,
           sentAt: undefined,
-          acked: false,
-          cookKey: undefined,
+          acked: s.acked,
+          cookKey: s.cookKey,
           recheck: undefined,
+          awaitFirst: undefined,
         });
       }
     }
@@ -269,6 +277,9 @@ export class AnovaApp {
   /** What to do with a readable memory: wait (refusal, pause, backoff) or connect. */
   async resume() {
     const generation = this.generation;
+    if (this.stopped) {
+      return;
+    }
     if (!this.config.token) {
       await this.setStatus(false, this.config.tokenInvalid ? T.tokenInvalid : T.noToken);
       return;
@@ -277,6 +288,10 @@ export class AnovaApp {
     if (block && block.mark === refusedMark(this.config.token)) {
       this.blocked = true;
       await this.setStatus(false, T.refused);
+      // A kept stop still has its one attempt (the stop is never refused).
+      if (this.stops.size > 0) {
+        this.connect({ force: true });
+      }
       return;
     }
     if (block) {
@@ -348,9 +363,10 @@ export class AnovaApp {
       this.configTimer = undefined;
     }
     this.halt();
-    await this.linking?.catch(() => {});
+    // Bounded: a hung attempt or a slow /data never holds the shutdown.
+    await this.bounded(this.linking?.catch(() => {}) ?? Promise.resolve(), TIMINGS.shutdownWait);
     if (this.memoryState === 'ok') {
-      await this.saveMemory();
+      await this.bounded(this.saveMemory(), TIMINGS.shutdownWait);
     }
   }
 
@@ -457,6 +473,9 @@ export class AnovaApp {
    * for the backoff, a pause or a refused token: one attempt, now.
    */
   connect({ force = false } = {}) {
+    if (this.stopped) {
+      return Promise.resolve();
+    }
     if (this.linking) {
       return this.linking;
     }
@@ -480,8 +499,9 @@ export class AnovaApp {
 
   async link(generation) {
     // The time of the attempt goes to /data first: a restart never comes faster.
+    // Bounded: a slow /data never holds an attempt (a stop) more than 500 ms.
     this.memory.backoff.lastAttemptAt = this.now();
-    await this.saveMemory();
+    await this.bounded(this.saveMemory(), TIMINGS.dataWriteWait);
     if (generation !== this.generation) {
       return;
     }
@@ -492,6 +512,7 @@ export class AnovaApp {
       now: this.now,
       onMessage: (message) => this.onMessage(channel, message),
       onClose: (err) => this.onClosed(channel, err),
+      onSign: () => this.step(),
       onIgnored: () => this.warnLimited('ignored', 'Anova sent a message that is not usable'),
     });
     this.connecting = channel;
@@ -523,7 +544,7 @@ export class AnovaApp {
     this.blocked = false;
     if (this.memory.block) {
       this.memory.block = null;
-      await this.saveMemory();
+      this.saveMemory();
     }
     this.startPing(channel);
     this.listTimer = this.timers.setTimeout(() => {
@@ -533,8 +554,28 @@ export class AnovaApp {
         channel.kill();
       }
     }, TIMINGS.listTimeout);
+    // The messages that came with the 101 (before the open resolved) first.
+    const early = channel.early ?? [];
+    channel.early = undefined;
+    for (const message of early) {
+      this.onMessage(channel, message);
+    }
+    if (this.channel !== channel) {
+      return;
+    }
     // The stops waiting for a connection leave first.
     this.resendStops();
+  }
+
+  /** A promise within `ms` (resolves undefined past it; the work goes on). */
+  bounded(promise, ms) {
+    let timer;
+    return Promise.race([
+      promise,
+      new Promise((resolve) => {
+        timer = this.timers.setTimeout(resolve, ms);
+      }),
+    ]).finally(() => this.timers.clearTimeout(timer));
   }
 
   /** A failed attempt: a refused token stops, a 429 pauses, anything else backs off. */
@@ -615,7 +656,12 @@ export class AnovaApp {
     // Anova accepts the handshake of an invalid token, then closes at once
     // without a message (seen on the real service): closed silently twice in
     // a row, the token is taken as refused (persisted, no new try by itself).
-    if (!channel.alive && !channel.killed) {
+    if (
+      !channel.alive &&
+      !channel.killed &&
+      err?.code === 1005 &&
+      this.monotonic() - this.openedAt <= TIMINGS.silentCloseWindow
+    ) {
       this.silentCloses += 1;
       if (this.silentCloses >= 2) {
         this.silentCloses = 0;
@@ -634,7 +680,7 @@ export class AnovaApp {
         this.logger.warn(
           `The connection to Anova closed (${err?.kind ?? 'closed'} ${err?.code ?? ''}): new try in ${Math.round(wait / 1000)} s`,
         );
-        await this.setStatus(false, T.lost(age(wait)));
+        await this.setStatus(false, channel.killed ? T.dead(age(wait)) : T.lost(age(wait)));
         // A stop waiting does not wait for the backoff.
         this.schedule(this.stops.size > 0 ? Math.min(wait, TIMINGS.backoff[0]) : wait);
       })
@@ -695,6 +741,10 @@ export class AnovaApp {
 
   onMessage(channel, message) {
     if (this.channel !== channel) {
+      // Sent with the 101, before the open resolved: kept for link().
+      if (this.connecting === channel && (channel.early ??= []).length < 50) {
+        channel.early.push(message);
+      }
       return;
     }
     if (LIST_EVENTS.has(message.command)) {
@@ -941,8 +991,9 @@ export class AnovaApp {
   /**
    * Stops a cooker or an oven: never refused. Resolves within the stop budget
    * with 'confirmed' (a state shows it idle), 'accepted' (Anova answered ok),
-   * 'refused' (Anova answered an error; kept, checked again), 'sent' (no
-   * answer yet) or 'queued' (no connection yet: sent as soon as one opens).
+   * 'refused' (Anova answered an error; kept, checked again), 'sent' (sent on
+   * a live connection, no answer yet) or 'queued' (not sent yet: sent as soon
+   * as a live connection opens).
    */
   async stopDevice(target, { reason = 'button' } = {}) {
     const start = this.monotonic();
@@ -965,10 +1016,12 @@ export class AnovaApp {
       firstAt: start,
       wallAt: this.now(),
       sends: 0,
+      probes: 0,
       sentAt: undefined,
       acked: false,
-      cookKey: this.states.get(cookerId)?.values.cookKey,
+      cookKey: this.states.get(cookerId)?.values.cookKey ?? previous?.cookKey,
       recheck: undefined,
+      awaitFirst: undefined,
     };
     this.stops.set(cookerId, record);
     this.keepStop(record);
@@ -978,7 +1031,7 @@ export class AnovaApp {
       await this.waitFor(() => this.channel !== undefined || !this.linking, deadline - start);
     }
     if (this.stops.get(cookerId) !== record) {
-      return 'sent'; // a newer stop of the same device took over
+      return 'confirmed';
     }
     if (record.sentAt !== undefined) {
       // Sent by resendStops when the connection opened: wait for its answer.
@@ -987,6 +1040,8 @@ export class AnovaApp {
     if (!this.channel) {
       return 'queued';
     }
+    // Pressed just now: sent at once, whatever cook the device shows.
+    this.clearRecheck(record);
     return this.sendStop(record, deadline);
   }
 
@@ -1002,6 +1057,8 @@ export class AnovaApp {
       type: record.type,
       at: record.wallAt,
       sends: record.sends,
+      acked: record.acked,
+      cookKey: record.cookKey,
     });
     this.saveMemory();
   }
@@ -1024,15 +1081,47 @@ export class AnovaApp {
       this.timers.clearTimeout(record.recheck);
       record.recheck = undefined;
     }
+    if (record.awaitFirst) {
+      this.timers.clearTimeout(record.awaitFirst);
+      record.awaitFirst = undefined;
+    }
   }
 
-  /** Sends the stop now on the open connection, then waits for its answer until `deadline`. */
-  sendStop(record, deadline) {
+  /** Cuts a connection found dead by us, at once (no backoff: a stop reconnects). */
+  dropChannel(channel) {
+    if (this.channel !== channel) {
+      return;
+    }
+    this.channel = undefined;
+    this.listed = false;
+    this.stopPing();
+    if (this.listTimer) {
+      this.timers.clearTimeout(this.listTimer);
+      this.listTimer = undefined;
+    }
+    this.endPending();
+    channel.kill();
+    this.step();
+  }
+
+  /**
+   * Sends the stop on the open connection with a ping. A send counts only on
+   * a proof that the connection is alive (the answer, any message or the
+   * pong within 1.5 s); without it, the connection is cut, opened again at
+   * once and the stop sent on the new one (3 dead connections at most per
+   * stop, then the backoff). Then waits for the answer until `deadline`.
+   */
+  async sendStop(record, deadline) {
+    const channel = this.channel;
+    if (!channel) {
+      return 'queued';
+    }
+    const signs = channel.signs;
     const { sent, answer } = this.request(stopCommand(record));
     if (!sent) {
       return 'queued';
     }
-    record.sends += 1;
+    channel.probe();
     record.sentAt = this.monotonic();
     record.acked = false;
     record.answer = answer;
@@ -1040,11 +1129,45 @@ export class AnovaApp {
     answer.then((res) => {
       if (res?.ok && this.stops.get(record.cookerId) === record) {
         record.acked = true;
+        this.keepStop(record);
       }
     });
-    this.keepStop(record);
-    this.armRecheck(record);
-    return this.stopOutcome(record, deadline);
+    const alive = () => channel.signs > signs;
+    await this.waitFor(() => alive() || this.channel !== channel, TIMINGS.stopProof);
+    if (this.stops.get(record.cookerId) !== record) {
+      return 'confirmed';
+    }
+    if (alive()) {
+      record.sends += 1;
+      this.keepStop(record);
+      this.armRecheck(record);
+      return this.stopOutcome(record, deadline);
+    }
+    // No sign of life: this send does not count.
+    record.sentAt = undefined;
+    record.probes += 1;
+    this.logger.warn(`Stop of ${record.cookerId}: the connection is dead, opening a new one`);
+    this.dropChannel(channel);
+    if (record.probes >= TIMINGS.stopProbes) {
+      this.schedule(TIMINGS.backoff[0]);
+      return 'queued';
+    }
+    this.connect({ force: true });
+    await this.waitFor(
+      () => this.channel !== undefined || !this.linking,
+      Math.max(0, deadline - this.monotonic()),
+    );
+    if (this.stops.get(record.cookerId) !== record) {
+      return 'confirmed';
+    }
+    if (record.sentAt !== undefined) {
+      return this.stopOutcome(record, deadline);
+    }
+    if (!this.channel) {
+      return 'queued';
+    }
+    this.clearRecheck(record);
+    return this.sendStop(record, deadline);
   }
 
   async stopOutcome(record, deadline) {
@@ -1059,32 +1182,51 @@ export class AnovaApp {
   }
 
   /** After a send: checked again once the device had time to report. */
-  armRecheck(record) {
-    this.clearRecheck(record);
+  armRecheck(record, delay = TIMINGS.stopRecheck) {
+    if (record.recheck) {
+      this.timers.clearTimeout(record.recheck);
+    }
     const generation = this.generation;
     record.recheck = this.timers.setTimeout(() => {
       record.recheck = undefined;
       if (generation === this.generation) {
         this.recheckStop(record);
       }
-    }, TIMINGS.stopRecheck);
+    }, delay);
   }
 
-  /** A state after the send shows the device idle: the stop is done. */
+  /**
+   * A state of the device. Waiting for the first state of a new connection
+   * (a kept stop of a known cook): idle = done, another cook = not sent (a
+   * cook started afterwards), the same cook or no identity = sent. Otherwise,
+   * a state after the send showing the device idle: the stop is done.
+   */
   checkStop(cookerId, entry) {
     const record = this.stops.get(cookerId);
-    if (
-      record?.sentAt !== undefined &&
-      entry.at > record.sentAt &&
-      entry.values.cooking === false
-    ) {
+    if (!record) {
+      return;
+    }
+    if (record.awaitFirst && entry.conn === this.connId) {
+      this.timers.clearTimeout(record.awaitFirst);
+      record.awaitFirst = undefined;
+      const key = entry.values.cookKey;
+      if (entry.values.cooking === false) {
+        this.forgetStop(record, 'the device is idle');
+      } else if (key !== undefined && record.cookKey !== undefined && key !== record.cookKey) {
+        this.forgetStop(record, 'another cook started meanwhile: not sent');
+      } else {
+        this.sendStop(record, this.monotonic() + TIMINGS.stopBudget).catch(() => {});
+      }
+      return;
+    }
+    if (record.sentAt !== undefined && entry.at > record.sentAt && entry.values.cooking === false) {
       this.forgetStop(record, 'confirmed by the state');
     }
   }
 
   /**
    * The device still reports a cook after the stop: the stop is sent again
-   * (3 sends at most, 10 min at most), unless a different cook is shown (a
+   * (3 sends in all, 10 min at most), unless a different cook is shown (a
    * cook started afterwards, from the app or the device). In doubt (no state
    * since the send, no identity of the cook within 2 min), the stop leaves.
    */
@@ -1124,20 +1266,37 @@ export class AnovaApp {
       return; // sent again when a connection opens (resendStops)
     }
     this.logger.warn(`Stop of ${record.cookerId} not confirmed: sent again`);
-    this.sendStop(record, this.monotonic() + TIMINGS.stopBudget);
+    this.sendStop(record, this.monotonic() + TIMINGS.stopBudget).catch(() => {});
   }
 
-  /** A connection opened: every stop waiting leaves (or is checked again after its first send). */
+  /**
+   * A connection opened. Each stop waiting: accepted earlier = decided on
+   * the states of this connection; a known cook = sent after the first state
+   * of the device (2 s at most: in doubt, it leaves); otherwise sent at once.
+   */
   resendStops() {
     for (const record of [...this.stops.values()]) {
+      this.clearRecheck(record);
       if (this.monotonic() - record.firstAt > TIMINGS.stopKeep) {
         this.forgetStop(record, 'given up after 10 min without a connection');
-      } else if (record.sends === 0) {
-        this.sendStop(record, this.monotonic() + TIMINGS.stopBudget);
+      } else if (record.acked) {
+        record.sentAt = this.monotonic();
+        this.armRecheck(record, TIMINGS.stopFirstState * 2);
+      } else if (record.cookKey !== undefined) {
+        const generation = this.generation;
+        record.awaitFirst = this.timers.setTimeout(() => {
+          record.awaitFirst = undefined;
+          if (generation === this.generation && this.stops.get(record.cookerId) === record) {
+            this.sendStop(record, this.monotonic() + TIMINGS.stopBudget).catch(() => {});
+          }
+        }, TIMINGS.stopFirstState);
+        // A state that came with the 101 already decides.
+        const entry = this.states.get(record.cookerId);
+        if (entry?.conn === this.connId) {
+          this.checkStop(record.cookerId, entry);
+        }
       } else {
-        // Sent on an earlier connection: decided on the states of this one.
-        record.sentAt = record.sentAt ?? this.monotonic() - TIMINGS.stopRecheck;
-        this.armRecheck(record);
+        this.sendStop(record, this.monotonic() + TIMINGS.stopBudget).catch(() => {});
       }
     }
   }
@@ -1193,6 +1352,11 @@ export class AnovaApp {
     if (!entry || entry.conn !== this.connId || this.monotonic() - entry.at > TIMINGS.freshState) {
       throw userError(ERRORS.noFreshState, this.language);
     }
+    // A start sent earlier is not confirmed by a state from before it.
+    const lastStart = this.startSent.get(cookerId);
+    if (lastStart !== undefined && entry.at <= lastStart) {
+      throw userError(ERRORS.previousStart, this.language);
+    }
     if (entry.values.cooking !== false) {
       throw userError(ERRORS.alreadyCooking, this.language);
     }
@@ -1218,6 +1382,8 @@ export class AnovaApp {
    */
   async startCook(fields) {
     const L = this.language;
+    // Gladys waits 45 s: the start leaves within 10 s of the scene, or nothing is sent.
+    const sendBy = this.monotonic() + TIMINGS.startSendBy;
     if (!this.config.allowStart) {
       throw userError(ERRORS.startDisabled, L);
     }
@@ -1265,8 +1431,12 @@ export class AnovaApp {
       const count = this.stopCount.get(cookerId) ?? 0;
       // The start is written to /data before its first byte; a failed write sends nothing.
       this.memory.start = { cookerId, at: this.now() };
-      if (!(await this.saveMemory())) {
+      const saved = await this.bounded(this.saveMemory(), Math.max(0, sendBy - this.monotonic()));
+      if (saved !== true) {
         throw userError(ERRORS.dataNotSaved, L);
+      }
+      if (this.monotonic() > sendBy) {
+        throw userError(ERRORS.tooLate, L);
       }
       // Just before the send: the option, a stop meanwhile, the connection and the state again.
       if (!this.config.allowStart) {
@@ -1281,22 +1451,26 @@ export class AnovaApp {
       if (!sent) {
         throw userError(ERRORS.notConnected, L);
       }
+      // Until a state after it, no other start of this cooker.
+      this.startSent.set(cookerId, sentAt);
       this.logger.info(`Start of ${cookerId}: ${temperature} °C, ${minutes} min`);
       const res = await this.waitAnswer(answer, TIMINGS.startResponse);
       if (res && !res.ok) {
+        this.startSent.delete(cookerId); // refused: nothing started
         throw userError(ERRORS.refusedByAnova, L);
       }
       if ((this.stopCount.get(cookerId) ?? 0) !== count) {
         return { result: res ? 'accepted' : 'sent' }; // stopped meanwhile
       }
-      const started = await this.waitState(
-        cookerId,
-        (entry) =>
-          entry.at > sentAt &&
-          entry.values.cooking === true &&
-          (entry.values.target === undefined || Math.abs(entry.values.target - temperature) <= 0.6),
-        TIMINGS.startConfirm,
-      );
+      const shows = (entry) =>
+        entry !== undefined &&
+        entry.at > sentAt &&
+        entry.values.cooking === true &&
+        (entry.values.target === undefined || Math.abs(entry.values.target - temperature) <= 0.6);
+      // The state may have come with the answer, before the watcher.
+      const started =
+        shows(this.states.get(cookerId)) ||
+        (await this.waitState(cookerId, shows, TIMINGS.startConfirm));
       const result = started ? 'started' : res ? 'accepted' : 'sent';
       this.logger.info(`Start of ${cookerId}: ${result}`);
       return { result };

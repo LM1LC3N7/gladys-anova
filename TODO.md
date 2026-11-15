@@ -26,8 +26,8 @@ Handoff document: what is done, what was decided, what comes next.
   device types). The official example repository has no license: nothing of
   its code is read or used. The cooker state shapes, not documented, are
   ported from anova-wifi (MIT, THIRD_PARTY_NOTICES.md). The oven state fields
-  are taken as facts from community descriptions (no code ported); never
-  verified.
+  are taken as facts from the documentation of anova-oven-rs (MIT or
+  Apache-2.0, `docs/oven-websocket-api.md`; no code ported); never verified.
 - Only the personal access token: no e-mail/password login, no Firebase key,
   no `platform` parameter, no imitation of the app. Honest User-Agent.
 - The token goes in the query string (the only documented way): never logged;
@@ -54,6 +54,18 @@ Handoff document: what is done, what was decided, what comes next.
   less than 30 min.
 - The target temperature is a read-only `thermostat`/`target-temperature`;
   temperatures are `temperature-sensor`/`probe` (kept out of room averages).
+
+## Review r1 (2026-11-15)
+
+- I1–I7 and m1–m7 fixed, each with its tests; the reviewer's mutants are in
+  `scripts/mutants.json`. Equivalent mutants left out: R3 and R25 (a state is
+  always later than the send it follows), R32 (the start checks the stop again
+  before the send), R11 (our own cut always closes with 1006, never the 1005
+  that counts), and the start deadline checked again after the write (the
+  write wait is already bounded by that deadline: the check is kept anyway).
+- A stop proves the connection alive (answer, message or pong within 1.5 s);
+  a send without proof does not count, the connection is opened again at once
+  (3 dead connections per stop, then the backoff).
 
 ## Next
 

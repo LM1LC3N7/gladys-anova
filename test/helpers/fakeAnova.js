@@ -132,6 +132,9 @@ class FakeSocket extends EventEmitter {
     if (this.readyState !== 1) {
       throw new Error('WebSocket is not open');
     }
+    if (this.frozen) {
+      return; // half-open: written, never reaches Anova
+    }
     const message = JSON.parse(text);
     this.sent.push(message);
     this.server.received.push(message);
@@ -141,7 +144,7 @@ class FakeSocket extends EventEmitter {
   }
 
   deliver(answer) {
-    if (this.readyState === 1) {
+    if (this.readyState === 1 && !this.frozen) {
       this.emit(
         'message',
         Buffer.from(typeof answer === 'string' ? answer : JSON.stringify(answer)),
@@ -151,7 +154,7 @@ class FakeSocket extends EventEmitter {
 
   ping() {
     this.server.pings += 1;
-    if (this.server.answerPings) {
+    if (this.server.answerPings && !this.frozen) {
       this.later(() => this.emit('pong'));
     }
   }
@@ -263,7 +266,16 @@ export function fakeAnova({ cookers = [{ cookerId: COOKER, type: 'a4' }], ovens 
         socket.readyState = 1;
         socket.emit('open');
         if (server.closeSilently) {
-          socket.drop(1005);
+          socket.drop(server.closeCode ?? 1005);
+          return;
+        }
+        if (server.syncLists) {
+          // In the same turn as the open (the bytes that came with the 101).
+          socket.deliver(apcList(server.cookers));
+          socket.deliver(apoList(server.ovens));
+          for (const id of Object.keys(server.states)) {
+            socket.deliver(server.states[id]);
+          }
           return;
         }
         if (!server.silentLists) {
@@ -288,7 +300,7 @@ export function fakeAnova({ cookers = [{ cookerId: COOKER, type: 'a4' }], ovens 
         requestId: message.requestId,
         payload: { status: server.status[message.command] ?? 'ok' },
       });
-      if (server.noStateAfterCommand) {
+      if (server.noStateAfterCommand || (server.status[message.command] ?? 'ok') !== 'ok') {
         return out;
       }
       const p = message.payload ?? {};

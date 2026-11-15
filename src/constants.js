@@ -141,15 +141,28 @@ export const TIMINGS = {
   silenceRefresh: 25 * MINUTE,
   /** A start decides on a state of the open connection at most this old. */
   freshState: 30 * MINUTE,
+  /** A close without a message within this time of the open may be a refused token (1005 only). */
+  silentCloseWindow: 5 * SECOND,
+  /** Longest wait for the attempt and /data at shutdown. */
+  shutdownWait: 2 * SECOND,
+  /** Longest wait for a write to /data on the way of an attempt. */
+  dataWriteWait: 500,
+  /** A stop proves the connection alive (answer, message or pong) within this time, else reconnects. */
+  stopProof: 1_500,
+  /** At most this many dead connections found by one stop, then the backoff. */
+  stopProbes: 3,
+  /** A kept stop with a known cook waits this long for the first state of a new connection. */
+  stopFirstState: 2 * SECOND,
+  /** A start must leave within this time of the scene reaching it (Gladys waits 45 s). */
+  startSendBy: 10 * SECOND,
   /** A normal close (1000), then the socket is cut. */
   closeGrace: 2 * SECOND,
   /** The answer (RESPONSE) to a start. */
   startResponse: 10 * SECOND,
   /** A start confirmed by a state showing the cook, within this time. */
   startConfirm: 20 * SECOND,
-  /** A stop: connection and answer within this budget, Gladys answered by commandAck. */
+  /** A stop: connection and answer within this budget (Gladys waits 5 s). */
   stopBudget: 3_500,
-  commandAck: 4_300,
   /** A stop still contradicted by a state this long after its answer is sent again. */
   stopRecheck: 20 * SECOND,
   /** A stop is sent at most this many times. */

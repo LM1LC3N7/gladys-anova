@@ -1,5 +1,5 @@
 // -----------------------------------------------------------------------------
-// Real clock, sped up 100 times: the ping period is measured (30 s), and the
+// Real clock, sped up 20 times: the ping period is measured (30 s), and the
 // reconnection never comes faster than the backoff. The app is stopped in
 // t.after, so a failure never leaves timers running.
 // -----------------------------------------------------------------------------
@@ -11,7 +11,7 @@ import { measurePeriod, realClock, spyOn } from './kit/clock.mjs';
 import { createSetup, fakeAnova } from './helpers/fakeAnova.js';
 
 test('real clock: one ping every 30 s, measured', async (t) => {
-  const clock = realClock({ speed: 100 });
+  const clock = realClock({ speed: 20 });
   const server = fakeAnova();
   const s = createSetup({ clock, server });
   t.after(async () => {
@@ -30,7 +30,7 @@ test('real clock: one ping every 30 s, measured', async (t) => {
 });
 
 test('real clock: failed attempts spaced by the backoff, never faster', async (t) => {
-  const clock = realClock({ speed: 100 });
+  const clock = realClock({ speed: 20 });
   const server = fakeAnova();
   server.down = true;
   const s = createSetup({ clock, server, random: () => 0.5 });

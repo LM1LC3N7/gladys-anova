@@ -103,6 +103,12 @@ export function normalizeMemory(raw, wall) {
         type: s.type,
         at: atWall,
         sends: Number.isInteger(s.sends) && s.sends >= 0 ? Math.min(s.sends, TIMINGS.stopSends) : 0,
+        acked: s.acked === true,
+        // The cook the stop was meant for: never cuts another one (src/app.js).
+        cookKey:
+          typeof s.cookKey === 'string' && /^[\x21-\x7e]{1,64}$/.test(s.cookKey)
+            ? s.cookKey
+            : undefined,
       });
     }
   }

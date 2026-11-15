@@ -86,6 +86,7 @@ export class Channel {
     onMessage,
     onClose,
     onIgnored = () => {},
+    onSign = () => {},
     timers = globalThis,
     now = Date.now,
   }) {
@@ -94,6 +95,9 @@ export class Channel {
     this.onMessage = onMessage;
     this.onClose = onClose;
     this.onIgnored = onIgnored;
+    this.onSign = onSign;
+    /** Signs of life (messages and pongs) since the open. */
+    this.signs = 0;
     this.timers = timers;
     this.now = now;
     this.socket = undefined;
@@ -147,16 +151,20 @@ export class Channel {
           return;
         }
         this.alive = true;
+        this.signs += 1;
         const message = parseMessage(data);
         if (message) {
           this.onMessage(message);
         } else {
           this.onIgnored();
         }
+        this.onSign();
       });
       socket.on('pong', () => {
         this.waitingPong = false;
         this.alive = true;
+        this.signs += 1;
+        this.onSign();
       });
       // An 'error' is always followed by a 'close': the close decides. Its text
       // is never kept (it may hold the host or more).
@@ -213,6 +221,19 @@ export class Channel {
       return false;
     }
     return true;
+  }
+
+  /** A ping now, even if one is awaited (a proof of life asked by a stop). */
+  probe() {
+    if (!this.isOpen) {
+      return false;
+    }
+    try {
+      this.socket.ping();
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /**
