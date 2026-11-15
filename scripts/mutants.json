@@ -1,0 +1,182 @@
+[
+  {
+    "name": "start allowed without the option",
+    "file": "src/app.js",
+    "from": "    if (!this.config.allowStart) {\n      throw userError(ERRORS.startDisabled, L);\n    }\n    const ref",
+    "to": "    const ref"
+  },
+  {
+    "name": "option not checked again before the send",
+    "file": "src/app.js",
+    "from": "      // Just before the send: the option, a stop meanwhile, the connection and the state again.\n      if (!this.config.allowStart) {",
+    "to": "      if (false) {"
+  },
+  {
+    "name": "stop meanwhile not checked before the send",
+    "file": "src/app.js",
+    "from": "if ((this.stopCount.get(cookerId) ?? 0) !== count || this.stops.has(cookerId)) {\n        throw userError(ERRORS.cancelledByStop, L);",
+    "to": "if (false) {\n        throw userError(ERRORS.cancelledByStop, L);"
+  },
+  {
+    "name": "failed /data write does not block the start",
+    "file": "src/app.js",
+    "from": "if (!(await this.saveMemory())) {",
+    "to": "if (!(await this.saveMemory()) && false) {"
+  },
+  {
+    "name": "temperature upper bound",
+    "file": "src/app.js",
+    "from": "temperature > maxTemperature",
+    "to": "temperature > maxTemperature + 1"
+  },
+  {
+    "name": "minutes must be whole",
+    "file": "src/app.js",
+    "from": "!Number.isInteger(minutes) ||",
+    "to": "!Number.isFinite(minutes) ||"
+  },
+  {
+    "name": "start while cooking",
+    "file": "src/app.js",
+    "from": "if (entry.values.cooking !== false) {",
+    "to": "if (entry.values.cooking === true && false) {"
+  },
+  {
+    "name": "stale state accepted (other connection)",
+    "file": "src/app.js",
+    "from": "entry.conn !== this.connId ||",
+    "to": ""
+  },
+  {
+    "name": "problem of the cooker ignored",
+    "file": "src/app.js",
+    "from": "['water_leak', 'water_critical', 'water_temperature_high', 'water_low'].includes(",
+    "to": "[].includes("
+  },
+  {
+    "name": "stop waits for the 429 pause",
+    "file": "src/app.js",
+    "from": "    if (!this.channel && this.config.token) {\n      this.connect({ force: true });",
+    "to": "    if (!this.channel && this.config.token) {\n      this.connect({ force: false });"
+  },
+  {
+    "name": "stop resent more than 3 times",
+    "file": "src/app.js",
+    "from": "if (record.sends >= TIMINGS.stopSends) {",
+    "to": "if (record.sends >= TIMINGS.stopSends + 5) {"
+  },
+  {
+    "name": "stop fights a new cook",
+    "file": "src/app.js",
+    "from": "if (record.cookKey !== undefined && key !== undefined && key !== record.cookKey) {",
+    "to": "if (false) {"
+  },
+  {
+    "name": "stop not kept in /data",
+    "file": "src/app.js",
+    "from": "    this.stops.set(cookerId, record);\n    this.keepStop(record);",
+    "to": "    this.stops.set(cookerId, record);"
+  },
+  {
+    "name": "401 retried by itself",
+    "file": "src/app.js",
+    "from": "    if (err.kind === 'refused') {\n      await this.refuse(T.refused);",
+    "to": "    if (err.kind === 'refused-no') {\n      await this.refuse(T.refused);"
+  },
+  {
+    "name": "403 taken as a refusal",
+    "file": "src/channel.js",
+    "from": "if (status === 401) {",
+    "to": "if (status === 401 || status === 403) {"
+  },
+  {
+    "name": "429 pause not persisted",
+    "file": "src/app.js",
+    "from": "this.memory.pause = { kind: 'busy', until: this.now() + wait };",
+    "to": ""
+  },
+  {
+    "name": "429 not capped at 6 h",
+    "file": "src/app.js",
+    "from": "        TIMINGS.tooManyMax,\n      );",
+    "to": "        Infinity,\n      );"
+  },
+  {
+    "name": "backoff not growing",
+    "file": "src/app.js",
+    "from": "this.memory.backoff.level = Math.min(level + 1, steps.length);",
+    "to": "this.memory.backoff.level = 0;"
+  },
+  {
+    "name": "restart ignores the last attempt",
+    "file": "src/app.js",
+    "from": "const wait = Math.min(Math.max(0, lastAttemptAt + gap - this.now()), TIMINGS.backoff.at(-1));",
+    "to": "const wait = 0;"
+  },
+  {
+    "name": "unreadable /data treated as empty",
+    "file": "src/app.js",
+    "from": "    if (result.status === 'unreadable') {\n      this.memoryState = 'unreadable';\n      return;\n    }",
+    "to": ""
+  },
+  {
+    "name": "unknown water temperature published as 0",
+    "file": "src/devices.js",
+    "from": "if (value !== undefined && Number.isFinite(value)) {",
+    "to": "if (true) {"
+  },
+  {
+    "name": "numbers not strict",
+    "file": "src/protocol.js",
+    "from": "  } else {\n    return undefined;\n  }\n  return Number.isFinite(n)",
+    "to": "  } else {\n    n = Number(value);\n  }\n  return Number.isFinite(n)"
+  },
+  {
+    "name": "°F target not converted",
+    "file": "src/protocol.js",
+    "from": "  if (target !== undefined && unit === 'F') {\n    target = toCelsius(target);\n  } else",
+    "to": "  if (false) {\n  } else"
+  },
+  {
+    "name": "oversized message accepted",
+    "file": "src/channel.js",
+    "from": "  maxPayload: LIMITS.messageBytes,",
+    "to": "  maxPayload: 100 * 1024 * 1024,"
+  },
+  {
+    "name": "list timeout removed",
+    "file": "src/app.js",
+    "from": "      if (this.channel === channel && !this.listed) {",
+    "to": "      if (false) {"
+  },
+  {
+    "name": "timer-end stop more than once",
+    "file": "src/app.js",
+    "from": "    if (this.timerStopped.has(key)) {\n      return;\n    }",
+    "to": ""
+  },
+  {
+    "name": "old state republished undated",
+    "file": "src/app.js",
+    "from": "const dated = ageMs > TIMINGS.stateDated ?",
+    "to": "const dated = false ?"
+  },
+  {
+    "name": "test button ignores the 429 pause",
+    "file": "src/app.js",
+    "from": "    if (mono < this.pauseUntil) {\n      return T.tooMany(age(this.pauseUntil - mono));\n    }",
+    "to": ""
+  },
+  {
+    "name": "silent close never a refusal",
+    "file": "src/app.js",
+    "from": "if (this.silentCloses >= 2) {",
+    "to": "if (this.silentCloses >= 99) {"
+  },
+  {
+    "name": "one silent close is a refusal",
+    "file": "src/app.js",
+    "from": "if (this.silentCloses >= 2) {",
+    "to": "if (this.silentCloses >= 1) {"
+  }
+]

@@ -1,61 +1,127 @@
-# Demo Devices Template
+# Anova for Gladys Assistant
 
-This is the user documentation of the integration. Gladys re-hosts this file
-and shows a permanent **Documentation** link to it in the Configuration screen
-(in the user's language, with English as the fallback) — it is when
-configuring that the user needs it most. Keep the short onboarding hints in
-the `section` blocks of the manifest `config_schema`; put the long
-step-by-step (screenshots, troubleshooting…) here.
+Shows your Anova Precision Cookers (sous vide) and Anova Precision Ovens in
+Gladys through the official **Anova Developer** API (a WebSocket of Anova's
+cloud), and lets Gladys stop them, and start a sous vide cook when you allow
+it.
 
-## What you get
+Never tested with a real device: written from the official documentation and
+from the library of the Anova integration of Home Assistant. Not affiliated
+with Anova. Feedback welcome on the Gladys forum.
 
-Six demo devices show up after installation: a weather station (real data
-from Open-Meteo), a switch, a dimmable light, a smart plug with power
-metering, a motion sensor and a camera.
+## What you need
 
-## Configuration
+- An Anova account with your devices paired in the Anova app.
+- A **personal access token**: in the **Anova Oven** app (also for a sous vide
+  cooker: sign in with the same account), go to **More → Developer → Personal
+  Access Tokens**, give it a name and create it. It starts with `anova-`. An
+  account can have up to 10 tokens.
+- The use of the API is subject to the Anova API Terms of Use
+  (<https://developer.anovaculinary.com/terms>): personal, non-commercial use.
 
-1. Open the **Configuration** tab of the integration.
-2. Set the **latitude** and **longitude** the demo weather station should
-   observe (they default to Paris), and pick your temperature unit.
-   The **refresh interval** sets how often the weather station and the
-   plug's power are read: every 5 minutes by default, every minute at most.
-3. Save: the devices appear in the **Discovery** tab, ready to be added.
+## Setup
 
-The **Prefer the local connection** toggle drives the demo plug: it reports
-the channel it actually uses as a badge (local or cloud), with an orange dot
-when it runs degraded (local refused, cloud fallback).
+1. Paste the token in **Personal access token** and save. The token is kept by
+   Gladys in its database, never shown again, sent only to Anova.
+2. The status should say "Connected to Anova: N devices".
+3. Open the **Discovery** tab and add your devices.
 
-## Actions
+## Features of each device
 
-- **Test the weather provider** — performs a live request to Open-Meteo and
-  shows the current temperature and humidity under the button.
-- **Identify a device** — pick one of your devices in the list and it will
-  signal itself (the demo light "blinks" in the logs).
+| Feature            | Precision Cooker                       | Precision Oven                |
+| ------------------ | -------------------------------------- | ----------------------------- |
+| Temperature        | water (°C)                             | oven, dry or wet bulb (°C)    |
+| Target temperature | read only (°C)                         | read only, while cooking (°C) |
+| Time remaining     | minutes (0 when idle)                  | minutes, while the timer runs |
+| Cook time          | minutes                                | minutes, while cooking        |
+| State              | idle, preheating, cooking, timer done… | idle or cooking               |
+| Alert              | water low or critical, leak, too hot   | water tank empty, door open   |
+| Stop cooking       | button                                 | button                        |
 
-## Scenes
+A value Anova does not give stays unknown: it is never shown as 0. Anova
+pushes a state when something changes; when nothing came for 25 min, the
+integration opens the connection again to get fresh states (Anova closes an
+idle connection after 30 min).
 
-The integration adds its own cards to the scene editor (Gladys 5.1 or
-later), under the **Integrations** category:
+The oven readings come from the community description of its state messages:
+they are not in the official documentation. The A3, A4/A5 and A6/A7 cookers
+send their state in different shapes, all read; other types are read when
+they send one of these shapes.
 
-- **Motion detected** (trigger) — starts the scene when a demo motion sensor
-  sees something move. Optionally pick the sensor and what moved (person,
-  animal); left empty, any detection matches. The following actions can
-  read what moved with `{{triggerEvent.data.target}}`.
-- **Identify a device** (action) — makes the chosen device signal itself.
-  It returns whether the device could signal itself, so the following
-  actions can depend on it.
+## Stopping
 
-## Dashboard
+The **Stop cooking** button of each device, and the scene action **Anova:
+stop cooking**, need no option and are never refused: not by the start option,
+nor by a pause asked by Anova (HTTP 429), nor by a refused token (one attempt
+per click), nor by an unreadable `/data`. Without a connection, one is opened
+at once; if it cannot open within 3.5 s, the stop is kept (also in `/data`,
+for 10 min) and sent as soon as a connection opens. It is sent again (3 times
+at most) while the device still reports the same cook 20 s after it; it is not
+sent again when a different cook is shown (one started afterwards from the app
+or the device). A stop also cancels a start not yet sent.
 
-Add the **Demo status** widget to a dashboard: it shows the live
-temperature of the weather station and the power of the office plug, the
-connection the plug currently uses (orange when degraded) and the observed
-location. Its **Identify the light** button makes the demo light signal
-itself.
+What a stop cannot do: reach Anova without a token, or before the token is
+read from Gladys after a restart (the token is never written to `/data`).
 
-## Troubleshooting
+The scene action gives a result: `confirmed` (the device reports idle),
+`accepted` (Anova answered ok), `refused` (Anova answered an error: checked
+again and sent again), `sent` (no answer yet) or `queued` (sent as soon as
+connected).
 
-The integration logs everything it does: check the integration logs from the
-Gladys UI (or `docker logs` on the host) with `LOG_LEVEL=debug` for the full
-detail.
+## Starting a sous vide cook (off by default)
+
+Starting heats water: it needs the option **Allow starting a cook**, off by
+default. Then the scene action **Anova: start a sous vide cook** takes a
+Precision Cooker, a temperature (25 to 92 °C, rounded to 0.1 °C) and a timer
+(whole minutes, 1 to 5999). Check that the cooker is in water before.
+
+The start is refused, and nothing is sent, when:
+
+- the option is off (checked again just before the send);
+- the device is an oven (starting an oven is not supported), or not on the
+  Anova account;
+- a temperature or a timer is out of range or not a number;
+- the connection is closed, or there is no state of the cooker on the current
+  connection from the last 30 minutes;
+- the cooker is already cooking (or its state is unknown), or reports a
+  problem (water level, leak, too hot, failure);
+- a stop of the cooker is in progress, or was pressed meanwhile;
+- `/data` cannot be written (the start is written there before it leaves).
+
+Results: `started` (a state shows the cook), `accepted` (Anova answered ok, no
+state yet) or `sent` (no answer: without confirmation). A start refused by
+Anova fails the action. A cook in progress is never changed: stop it, then
+start again. Changing the target during a cook is not in this version (the
+personal access tokens only allow start, stop and the temperature unit).
+
+## Stop at the end of the timer (option, off by default)
+
+Like in the Anova app, a Precision Cooker keeps the water at temperature when
+its timer ends. With **Stop the cooker when its timer ends**, Gladys sends a
+stop once per cook when the cooker reports its timer done.
+
+## Connection, limits and privacy
+
+- One connection per integration, URL from the documentation; the token goes
+  in the query string as the documentation requires: it is never logged, never
+  shown, never written to `/data`. The User-Agent says `gladys-anova/<version>`.
+- Anova cuts the connection when its rate limit is reached: the integration
+  connects again after 5 s, 15 s, 30 s, 1, 2, 5, 10 then 30 min (half to the
+  whole of each step), and starts again from 5 s once a connection stayed up
+  3 min. After a restart, never faster than this (the time of the last attempt
+  is in `/data`).
+- HTTP 429: pause for its Retry-After (1 min to 6 h, 15 min without), kept in
+  `/data` across a restart. A stop still goes through.
+- Refused token: an HTTP 401, or (what Anova does with an invalid token) a
+  connection closed twice in a row right after it opened, without any message. Nothing is sent again by itself: save a new
+  token, or click **Test the connection** (one new try). Only 8 bits of a hash
+  of the refused token are kept in `/data`. A 403 or any other status is not a
+  refusal: the integration backs off.
+- `/data` unreadable: nothing is sent by itself (read again every 10 s);
+  **Test the connection** starts again from an empty state.
+- Messages larger than 256 KB are cut before they are read.
+
+## Test the connection
+
+Connects now if needed (at most every 30 s, not during a 429 pause) and says
+how many devices Anova lists.

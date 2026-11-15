@@ -1,45 +1,45 @@
 // -----------------------------------------------------------------------------
-// Integration configuration.
-//
-// The configuration is filled in by the user in Gladys, from the `config_schema`
-// declared in `gladys-assistant-integration.json`. The SDK fetches it for you
-// (`gladys.getConfig()`) and notifies you of every change through
-// `gladys.onConfigUpdated()`.
-//
-// This module only provides defaults and normalizes the received object, so the
-// rest of the code never has to deal with `undefined`.
+// The configuration of the manifest `config_schema`, normalized.
 // -----------------------------------------------------------------------------
 
-// Defaults: they MUST stay consistent with the `default` values declared in the
-// `config_schema` of the manifest.
-export const DEFAULT_CONFIG = {
-  latitude: 48.8566, // Paris
-  longitude: 2.3522,
-  unit: 'celsius', // 'celsius' | 'fahrenheit'
-  // Seconds between two reads of the polled sensors. Gladys polls at most once
-  // a minute: slower intervals are applied by skipping polls (see
-  // createPoller in src/devices/index.js).
-  poll_frequency: 300,
-  // Reserved key (NOT in config_schema): because the manifest declares both
-  // 'local' and 'cloud' in its `transports` field, Gladys shows a standard
-  // "Prefer the local connection" toggle and sends the user's choice here.
-  // Read-only for the integration; defaults to true.
-  GLADYS_PREFER_LOCAL: true,
+import { createHash } from 'node:crypto';
+import { LIMITS } from './constants.js';
+
+/** Defaults, mirrored by the manifest (checked by test/manifest.test.js). */
+export const DEFAULTS = {
+  allow_start: false,
+  stop_at_timer_end: false,
+  language: 'fr',
 };
 
+export const LANGUAGES = ['fr', 'en'];
+
+/** A personal access token: `anova-` then printable ASCII without spaces, bounded. */
+const TOKEN = /^anova-[\x21-\x7e]+$/;
+
 /**
- * Merge the user config with the defaults.
- * @param {Record<string, unknown>} raw config returned by the SDK
+ * The mark of a REFUSED token kept in /data: 8 bits of its SHA-256 only, so
+ * the file never helps to find the token. A new token is recognised in
+ * memory (configUpdated); after a restart, a new token that happens to share
+ * the 8 bits (1 in 256) waits for the "Test the connection" button.
  */
+export const refusedMark = (token) => createHash('sha256').update(token).digest('hex').slice(0, 2);
+
+/** A boolean field: only `true` (or the strings Gladys may send) turns it on. */
+const flag = (value) => value === true || value === 'true' || value === 1 || value === '1';
+
 export function normalizeConfig(raw = {}) {
+  const typed = typeof raw?.token === 'string' ? raw.token.trim() : '';
+  const valid = typed.length <= LIMITS.tokenLength && TOKEN.test(typed);
+  const language = String(raw?.language ?? DEFAULTS.language)
+    .trim()
+    .toLowerCase();
   return {
-    ...DEFAULT_CONFIG,
-    ...raw,
-    // Force the types: config may arrive as strings from a form.
-    latitude: Number(raw.latitude ?? DEFAULT_CONFIG.latitude),
-    longitude: Number(raw.longitude ?? DEFAULT_CONFIG.longitude),
-    poll_frequency: Number(raw.poll_frequency ?? DEFAULT_CONFIG.poll_frequency),
-    // The preference is a boolean; anything but an explicit false means true.
-    GLADYS_PREFER_LOCAL: raw.GLADYS_PREFER_LOCAL !== false,
+    token: valid ? typed : '',
+    /** Something was typed, but it is not a personal access token. */
+    tokenInvalid: typed !== '' && !valid,
+    allowStart: flag(raw?.allow_start),
+    stopAtTimerEnd: flag(raw?.stop_at_timer_end),
+    language: LANGUAGES.includes(language) ? language : DEFAULTS.language,
   };
 }
