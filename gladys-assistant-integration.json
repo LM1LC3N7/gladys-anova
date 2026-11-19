@@ -198,8 +198,8 @@
         "fr": "Anova : arrêter la cuisson"
       },
       "description": {
-        "en": "Stops a Precision Cooker or a Precision Oven. Never needs an option. Output: confirmed, accepted, refused, sent or queued (sent as soon as connected).",
-        "fr": "Arrête un Precision Cooker ou un Precision Oven. Ne demande jamais d'option. Sortie : confirmed (confirmé), accepted (accepté), refused (refusé), sent (envoyé) ou queued (envoyé dès la connexion)."
+        "en": "Stops a Precision Cooker or a Precision Oven. Never needs an option. Output: confirmed, accepted, refused, sent, queued (sent as soon as connected) or skipped.",
+        "fr": "Arrête un Precision Cooker ou un Precision Oven. Ne demande jamais d'option. Sortie : confirmed (confirmé), accepted (accepté), refused (refusé), sent (envoyé), queued (envoyé dès la connexion) ou skipped (non envoyé)."
       },
       "timeout_seconds": 10,
       "fields": [

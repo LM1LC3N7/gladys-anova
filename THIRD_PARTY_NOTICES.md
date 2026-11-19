@@ -60,8 +60,10 @@ license file: nothing of its code is used.
 The field names of the oven state (`nodes.temperatureBulbs`, `nodes.timer`,
 `nodes.door`, `nodes.waterTank`, `state.mode`, `cook.cookId`) were read as
 facts in `docs/oven-websocket-api.md` of
-<https://github.com/robdimsdale/anova-oven-rs> (MIT or Apache-2.0). No code
-of it is used.
+<https://github.com/robdimsdale/anova-oven-rs> (MIT or Apache-2.0). That
+document names its own sources, among them bogd/anova-oven-api (GPL-3.0):
+only names of fields of the messages Anova sends (facts of the protocol) are
+used here, no code nor text of either project.
 
 ## ws
 

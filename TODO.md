@@ -27,7 +27,9 @@ Handoff document: what is done, what was decided, what comes next.
   its code is read or used. The cooker state shapes, not documented, are
   ported from anova-wifi (MIT, THIRD_PARTY_NOTICES.md). The oven state fields
   are taken as facts from the documentation of anova-oven-rs (MIT or
-  Apache-2.0, `docs/oven-websocket-api.md`; no code ported); never verified.
+  Apache-2.0, `docs/oven-websocket-api.md`; no code ported); that document
+  cites bogd/anova-oven-api (GPL-3.0) as a source: only protocol field names
+  are used, no code nor text. Never verified.
 - Only the personal access token: no e-mail/password login, no Firebase key,
   no `platform` parameter, no imitation of the app. Honest User-Agent.
 - The token goes in the query string (the only documented way): never logged;
@@ -66,6 +68,15 @@ Handoff document: what is done, what was decided, what comes next.
 - A stop proves the connection alive (answer, message or pong within 1.5 s);
   a send without proof does not count, the connection is opened again at once
   (3 dead connections per stop, then the backoff).
+
+## Review r2 (2026-11-15)
+
+- J1: a click always leaves at once (also on the connection it forced); the
+  identity check is for kept stops only; the scene answers `skipped`, never
+  `confirmed`, when a kept stop is not sent.
+- J2: an accepted stop is decided on the states of the new connection, those
+  of the 101 included. n1 (`tooLate` message), n2 (notice), n3 (tests for N10,
+  N17, N18, N22, N23) done; the reviewer's N13 and N21 are equivalent.
 
 ## Next
 

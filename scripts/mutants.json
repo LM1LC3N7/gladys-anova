@@ -230,8 +230,8 @@
   {
     "name": "R10 stop kept beyond 10 min (recheck)",
     "file": "src/app.js",
-    "from": "    if (mono - record.firstAt > TIMINGS.stopKeep) {\n      this.forgetStop(record, 'given up after 10 min without confirmation');",
-    "to": "    if (false) {\n      this.forgetStop(record, 'given up after 10 min without confirmation');"
+    "from": "    if (mono - record.firstAt > TIMINGS.stopKeep) {\n      this.forgetStop(record, 'given up after 10 min without confirmation', 'sent');",
+    "to": "    if (false) {\n      this.forgetStop(record, 'given up after 10 min without confirmation', 'sent');"
   },
   {
     "name": "R12 minutes upper bound",
@@ -392,8 +392,8 @@
   {
     "name": "I3 kept stop ignores another cook",
     "file": "src/app.js",
-    "from": "} else if (key !== undefined && record.cookKey !== undefined && key !== record.cookKey) {",
-    "to": "} else if (false) {"
+    "from": "    if (key !== undefined && record.cookKey !== undefined && key !== record.cookKey) {\n      this.forgetStop(record, 'another cook started meanwhile: not sent', 'skipped');",
+    "to": "    if (false) {\n      this.forgetStop(record, 'another cook started meanwhile: not sent', 'skipped');"
   },
   {
     "name": "I3 cook identity not reloaded",
@@ -430,5 +430,53 @@
     "file": "src/app.js",
     "from": "if (lastStart !== undefined && entry.at <= lastStart) {",
     "to": "if (false) {"
+  },
+  {
+    "name": "N10 acked stop branch removed",
+    "file": "src/app.js",
+    "from": "      } else if (record.acked) {",
+    "to": "      } else if (false) {"
+  },
+  {
+    "name": "N17 connect after stop()",
+    "file": "src/app.js",
+    "from": "  connect({ force = false } = {}) {\n    if (this.stopped) {\n      return Promise.resolve();\n    }",
+    "to": "  connect({ force = false } = {}) {"
+  },
+  {
+    "name": "N18 resume after stop()",
+    "file": "src/app.js",
+    "from": "    const generation = this.generation;\n    if (this.stopped) {\n      return;\n    }",
+    "to": "    const generation = this.generation;"
+  },
+  {
+    "name": "N22 acked not reloaded",
+    "file": "src/app.js",
+    "from": "          acked: s.acked,",
+    "to": "          acked: false,"
+  },
+  {
+    "name": "N23 previous identity lost on a new click",
+    "file": "src/app.js",
+    "from": "cookKey: this.states.get(cookerId)?.values.cookKey ?? previous?.cookKey,",
+    "to": "cookKey: this.states.get(cookerId)?.values.cookKey,"
+  },
+  {
+    "name": "J1 click checked like a kept stop",
+    "file": "src/app.js",
+    "from": "      } else if (record.click) {",
+    "to": "      } else if (false) {"
+  },
+  {
+    "name": "J2 accepted stop decided without the states of the 101 (r1 code)",
+    "file": "src/app.js",
+    "from": "        record.sentAt = this.openedAt;\n        this.armRecheck(record, TIMINGS.stopFirstState * 2);\n        const entry = this.states.get(record.cookerId);\n        if (entry?.conn === this.connId) {\n          this.decideKept(record, entry);\n        }",
+    "to": "        record.sentAt = this.monotonic();\n        this.armRecheck(record, TIMINGS.stopFirstState * 2);"
+  },
+  {
+    "name": "n1 slow /data reported as a failed write",
+    "file": "src/app.js",
+    "from": "      if (saved === 'late') {",
+    "to": "      if (false) {"
   }
 ]

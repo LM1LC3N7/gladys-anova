@@ -568,12 +568,12 @@ export class AnovaApp {
   }
 
   /** A promise within `ms` (resolves undefined past it; the work goes on). */
-  bounded(promise, ms) {
+  bounded(promise, ms, late = undefined) {
     let timer;
     return Promise.race([
       promise,
       new Promise((resolve) => {
-        timer = this.timers.setTimeout(resolve, ms);
+        timer = this.timers.setTimeout(() => resolve(late), ms);
       }),
     ]).finally(() => this.timers.clearTimeout(timer));
   }
@@ -995,9 +995,18 @@ export class AnovaApp {
    * a live connection, no answer yet) or 'queued' (not sent yet: sent as soon
    * as a live connection opens).
    */
-  async stopDevice(target, { reason = 'button' } = {}) {
+  async stopDevice(target, options = {}) {
+    const record = this.newStop(target, options);
+    try {
+      return await this.runStop(record);
+    } finally {
+      record.click = false;
+    }
+  }
+
+  /** The record of a stop pressed now (kept in memory and /data). */
+  newStop(target, { reason = 'button' } = {}) {
     const start = this.monotonic();
-    const deadline = start + TIMINGS.stopBudget;
     const { cookerId } = target;
     this.stopCount.set(cookerId, (this.stopCount.get(cookerId) ?? 0) + 1);
     // A start waiting for its answer or its state learns that a stop came.
@@ -1022,16 +1031,27 @@ export class AnovaApp {
       cookKey: this.states.get(cookerId)?.values.cookKey ?? previous?.cookKey,
       recheck: undefined,
       awaitFirst: undefined,
+      // A click: sent at once on any connection opened within its budget,
+      // whatever cook the device shows (the identity check is for kept stops).
+      click: true,
+      outcome: undefined,
     };
     this.stops.set(cookerId, record);
     this.keepStop(record);
     this.logger.info(`Stop of ${cookerId} (${reason})`);
+    return record;
+  }
+
+  async runStop(record) {
+    const start = record.firstAt;
+    const deadline = start + TIMINGS.stopBudget;
+    const { cookerId } = record;
     if (!this.channel && this.config.token) {
       this.connect({ force: true });
       await this.waitFor(() => this.channel !== undefined || !this.linking, deadline - start);
     }
     if (this.stops.get(cookerId) !== record) {
-      return 'confirmed';
+      return record.outcome ?? 'sent';
     }
     if (record.sentAt !== undefined) {
       // Sent by resendStops when the connection opened: wait for its answer.
@@ -1063,10 +1083,11 @@ export class AnovaApp {
     this.saveMemory();
   }
 
-  forgetStop(record, why) {
+  forgetStop(record, why, outcome = 'confirmed') {
     if (this.stops.get(record.cookerId) !== record) {
       return;
     }
+    record.outcome = outcome;
     this.clearRecheck(record);
     this.stops.delete(record.cookerId);
     this.logger.info(`Stop of ${record.cookerId}: ${why}`);
@@ -1135,7 +1156,7 @@ export class AnovaApp {
     const alive = () => channel.signs > signs;
     await this.waitFor(() => alive() || this.channel !== channel, TIMINGS.stopProof);
     if (this.stops.get(record.cookerId) !== record) {
-      return 'confirmed';
+      return record.outcome ?? 'sent';
     }
     if (alive()) {
       record.sends += 1;
@@ -1158,7 +1179,7 @@ export class AnovaApp {
       Math.max(0, deadline - this.monotonic()),
     );
     if (this.stops.get(record.cookerId) !== record) {
-      return 'confirmed';
+      return record.outcome ?? 'sent';
     }
     if (record.sentAt !== undefined) {
       return this.stopOutcome(record, deadline);
@@ -1173,7 +1194,7 @@ export class AnovaApp {
   async stopOutcome(record, deadline) {
     const res = await this.waitAnswer(record.answer, deadline - this.monotonic());
     if (this.stops.get(record.cookerId) !== record) {
-      return 'confirmed';
+      return record.outcome ?? 'sent';
     }
     if (res?.ok) {
       return 'accepted';
@@ -1209,12 +1230,7 @@ export class AnovaApp {
     if (record.awaitFirst && entry.conn === this.connId) {
       this.timers.clearTimeout(record.awaitFirst);
       record.awaitFirst = undefined;
-      const key = entry.values.cookKey;
-      if (entry.values.cooking === false) {
-        this.forgetStop(record, 'the device is idle');
-      } else if (key !== undefined && record.cookKey !== undefined && key !== record.cookKey) {
-        this.forgetStop(record, 'another cook started meanwhile: not sent');
-      } else {
+      if (!this.decideKept(record, entry)) {
         this.sendStop(record, this.monotonic() + TIMINGS.stopBudget).catch(() => {});
       }
       return;
@@ -1222,6 +1238,23 @@ export class AnovaApp {
     if (record.sentAt !== undefined && entry.at > record.sentAt && entry.values.cooking === false) {
       this.forgetStop(record, 'confirmed by the state');
     }
+  }
+
+  /**
+   * A kept stop (not a click) against a state of a new connection: idle =
+   * done, another cook = not sent. Returns true when decided.
+   */
+  decideKept(record, entry) {
+    const key = entry.values.cookKey;
+    if (entry.values.cooking === false) {
+      this.forgetStop(record, 'the device is idle');
+      return true;
+    }
+    if (key !== undefined && record.cookKey !== undefined && key !== record.cookKey) {
+      this.forgetStop(record, 'another cook started meanwhile: not sent', 'skipped');
+      return true;
+    }
+    return false;
   }
 
   /**
@@ -1236,7 +1269,7 @@ export class AnovaApp {
     }
     const mono = this.monotonic();
     if (mono - record.firstAt > TIMINGS.stopKeep) {
-      this.forgetStop(record, 'given up after 10 min without confirmation');
+      this.forgetStop(record, 'given up after 10 min without confirmation', 'sent');
       return;
     }
     const latest = this.states.get(record.cookerId);
@@ -1247,19 +1280,19 @@ export class AnovaApp {
       }
       const key = latest.values.cookKey;
       if (record.cookKey !== undefined && key !== undefined && key !== record.cookKey) {
-        this.forgetStop(record, 'a new cook started after it: not sent again');
+        this.forgetStop(record, 'a new cook started after it: not sent again', 'skipped');
         return;
       }
       if (
         (record.cookKey === undefined || key === undefined) &&
         mono - record.firstAt > TIMINGS.stopWindow
       ) {
-        this.forgetStop(record, 'the cook cannot be told apart: not sent again');
+        this.forgetStop(record, 'the cook cannot be told apart: not sent again', 'sent');
         return;
       }
     }
     if (record.sends >= TIMINGS.stopSends) {
-      this.forgetStop(record, 'sent 3 times without confirmation');
+      this.forgetStop(record, 'sent 3 times without confirmation', 'sent');
       return;
     }
     if (!this.channel) {
@@ -1278,10 +1311,19 @@ export class AnovaApp {
     for (const record of [...this.stops.values()]) {
       this.clearRecheck(record);
       if (this.monotonic() - record.firstAt > TIMINGS.stopKeep) {
-        this.forgetStop(record, 'given up after 10 min without a connection');
+        this.forgetStop(record, 'given up after 10 min without a connection', 'queued');
+      } else if (record.click) {
+        // A click still within its budget sends itself on this connection, at
+        // once and whatever cook the device shows (runStop, sendStop).
       } else if (record.acked) {
-        record.sentAt = this.monotonic();
+        // Accepted earlier: decided on the states of this connection, those
+        // that came with the 101 included.
+        record.sentAt = this.openedAt;
         this.armRecheck(record, TIMINGS.stopFirstState * 2);
+        const entry = this.states.get(record.cookerId);
+        if (entry?.conn === this.connId) {
+          this.decideKept(record, entry);
+        }
       } else if (record.cookKey !== undefined) {
         const generation = this.generation;
         record.awaitFirst = this.timers.setTimeout(() => {
@@ -1431,7 +1473,14 @@ export class AnovaApp {
       const count = this.stopCount.get(cookerId) ?? 0;
       // The start is written to /data before its first byte; a failed write sends nothing.
       this.memory.start = { cookerId, at: this.now() };
-      const saved = await this.bounded(this.saveMemory(), Math.max(0, sendBy - this.monotonic()));
+      const saved = await this.bounded(
+        this.saveMemory(),
+        Math.max(0, sendBy - this.monotonic()),
+        'late',
+      );
+      if (saved === 'late') {
+        throw userError(ERRORS.tooLate, L);
+      }
       if (saved !== true) {
         throw userError(ERRORS.dataNotSaved, L);
       }

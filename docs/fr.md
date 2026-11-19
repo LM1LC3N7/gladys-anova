@@ -66,10 +66,14 @@ par arrêt, puis le délai entre essais). Un tel envoi ne compte pas.
 
 Il part 3 fois en tout au plus, de nouveau tant que l'appareil indique la même
 cuisson 20 s après ; il n'est pas renvoyé si une autre cuisson apparaît (lancée
-ensuite depuis l'application ou l'appareil). Un arrêt gardé dont la cuisson est
-connue attend le premier état de l'appareil sur la nouvelle connexion (2 s au
+ensuite depuis l'application ou l'appareil). Un clic part toujours tout de
+suite, quelle que soit la cuisson affichée, y compris sur la connexion qu'il a
+ouverte lui-même dans ses 3,5 s. Seul un arrêt gardé (pas envoyé dans ces
+3,5 s, ou relu de `/data` après un redémarrage) dont la cuisson est connue la
+vérifie sur une nouvelle connexion, états reçus à l'ouverture compris (2 s au
 plus) : à l'arrêt, c'est fini ; une autre cuisson, il ne part pas ; la même
-cuisson, ou pas d'état, il part. L'identité de la cuisson est gardée dans
+cuisson, ou pas d'état, il part. Un arrêt déjà accepté par Anova est vérifié de
+la même façon avant d'être renvoyé. L'identité de la cuisson est gardée dans
 `/data`. Un arrêt annule aussi un démarrage pas encore envoyé.
 
 Ce qu'un arrêt ne peut pas faire : joindre Anova sans jeton, ou avant que le
@@ -78,7 +82,8 @@ dans `/data`).
 
 L'action de scène donne un résultat : `confirmed` (l'appareil indique l'arrêt),
 `accepted` (Anova a répondu ok), `refused` (Anova a répondu une erreur : revérifié
-et renvoyé), `sent` (pas encore de réponse) ou `queued` (envoyé dès la connexion).
+et renvoyé), `sent` (envoyé, pas encore de réponse), `queued` (envoyé dès la
+connexion) ou `skipped` (arrêt gardé non envoyé : une autre cuisson a été lancée).
 
 ## Démarrer une cuisson sous vide (désactivé par défaut)
 

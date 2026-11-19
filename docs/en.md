@@ -65,10 +65,14 @@ connections at most per stop, then the backoff). Such a send does not count.
 
 It is sent 3 times in all at most, again while the device still reports the
 same cook 20 s after it; it is not sent again when a different cook is shown
-(one started afterwards from the app or the device). A kept stop whose cook is
-known waits for the first state of the device on the new connection (2 s at
-most): idle, it is done; another cook, it is not sent; the same cook, or no
-state, it is sent. The identity of the cook is kept in `/data`. A stop also
+(one started afterwards from the app or the device). A click always leaves at
+once, whatever cook the device shows, also on the connection it opened itself
+within its 3.5 s. Only a kept stop (not sent within those 3.5 s, or read back
+from `/data` after a restart) whose cook is known checks it on a new
+connection, states that came with the opening included (2 s at most): idle, it
+is done; another cook, it is not sent; the same cook, or no state, it is sent.
+A stop already accepted by Anova is checked the same way before being sent
+again. The identity of the cook is kept in `/data`. A stop also
 cancels a start not yet sent.
 
 What a stop cannot do: reach Anova without a token, or before the token is
@@ -76,8 +80,8 @@ read from Gladys after a restart (the token is never written to `/data`).
 
 The scene action gives a result: `confirmed` (the device reports idle),
 `accepted` (Anova answered ok), `refused` (Anova answered an error: checked
-again and sent again), `sent` (no answer yet) or `queued` (sent as soon as
-connected).
+again and sent again), `sent` (sent, no answer yet), `queued` (sent as soon as
+connected) or `skipped` (a kept stop not sent: another cook was started).
 
 ## Starting a sous vide cook (off by default)
 

@@ -506,3 +506,139 @@ test('a stop not confirmed is given up after 10 min', async () => {
   assert.equal(s.app.stops.size, 0);
   await s.stopAll();
 });
+
+test('J1: a click always leaves, even when the cook changed and its state comes with the 101', async () => {
+  for (const via of ['button', 'scene']) {
+    const server = fakeAnova();
+    server.syncLists = true;
+    server.noStateAfterCommand = true;
+    server.states[COOKER] = cooking('job-OLD');
+    const s = await connectedSetup({ server });
+    server.main.drop();
+    await s.advance(1);
+    server.states[COOKER] = cooking('job-NEW');
+    const pending =
+      via === 'scene'
+        ? s.gladys.fake.sceneAction('stop_cook', { device: s.ext(`cooker:${COOKER}`) })
+        : s.gladys.fake.setValue(
+            { external_id: s.ext(`cooker:${COOKER}`) },
+            { external_id: s.ext(`cooker:${COOKER}:stop`) },
+            1,
+          );
+    const ack = await during(s, pending);
+    assert.equal(ack.success, true);
+    assert.equal(server.commands('CMD_APC_STOP').length, 1, via);
+    if (via === 'scene') {
+      assert.equal(ack.data.outputs.result, 'accepted');
+    }
+    await s.stopAll();
+  }
+});
+
+test('J2: a stop accepted then kept never cuts a cook started meanwhile (state with the 101)', async () => {
+  const server = fakeAnova();
+  server.syncLists = true;
+  server.noStateAfterCommand = true;
+  server.states[COOKER] = cooking('job-NEW');
+  const clock = testClock();
+  const store = memoryStore({
+    stops: [
+      {
+        cookerId: COOKER,
+        family: 'APC',
+        type: 'a4',
+        at: clock.now() - 30_000,
+        sends: 1,
+        acked: true,
+        cookKey: 'job-OLD',
+      },
+    ],
+  });
+  const s = createSetup({ server, store, clock });
+  await s.start();
+  await s.advance(TIMINGS.stopRecheck);
+  assert.equal(server.commands('CMD_APC_STOP').length, 0);
+  assert.equal(s.app.stops.size, 0);
+  await s.stopAll();
+
+  // The same cook still running: the accepted stop is sent again (N22: acked read back).
+  const same = fakeAnova();
+  same.syncLists = true;
+  same.noStateAfterCommand = true;
+  same.states[COOKER] = cooking('job-OLD');
+  const c2 = testClock();
+  const s2 = createSetup({
+    server: same,
+    clock: c2,
+    store: memoryStore({
+      stops: [
+        {
+          cookerId: COOKER,
+          family: 'APC',
+          type: 'a4',
+          at: c2.now() - 30_000,
+          sends: 1,
+          acked: true,
+          cookKey: 'job-OLD',
+        },
+      ],
+    }),
+  });
+  await s2.start();
+  await s2.advance(1);
+  assert.equal(
+    same.commands('CMD_APC_STOP').length,
+    0,
+    'accepted: checked first, not sent at once',
+  );
+  await s2.advance(TIMINGS.stopFirstState * 2 + 10);
+  assert.equal(same.commands('CMD_APC_STOP').length, 1);
+  await s2.stopAll();
+});
+
+test('n1: a start held by a slow /data says it took too long', async () => {
+  const s = await connectedSetup({ config: { token: TOKEN, allow_start: true, language: 'en' } });
+  const save = s.store.save.bind(s.store);
+  s.store.save = (data) => (data.start ? new Promise(() => {}) : save(data));
+  const pending = s.gladys.fake.sceneAction('start_cook', startFields(s));
+  await settle();
+  await s.advance(TIMINGS.startSendBy + 1);
+  const ack = await pending;
+  assert.match(ack.error, /too long/);
+  s.store.save = save;
+  await s.stopAll();
+});
+
+test('N17, N18: nothing connects after stop()', async () => {
+  const s = await connectedSetup();
+  await s.stopAll();
+  const statuses = s.gladys.fake.connectionStatuses.length;
+  await s.app.connect({ force: true });
+  await s.app.resume();
+  await settle();
+  assert.equal(s.server.sockets.length, 1);
+  assert.equal(s.gladys.fake.connectionStatuses.length, statuses, 'no status after stop()');
+});
+
+test('N23: a new click keeps the identity of the cook of the previous one', async () => {
+  const clock = testClock();
+  const server = fakeAnova();
+  server.down = true;
+  const store = memoryStore({
+    stops: [
+      {
+        cookerId: COOKER,
+        family: 'APC',
+        type: 'a4',
+        at: clock.now() - 1000,
+        sends: 0,
+        cookKey: 'job-OLD',
+      },
+    ],
+  });
+  const s = createSetup({ server, store, clock });
+  await s.start();
+  await during(s, s.app.stopDevice({ cookerId: COOKER, family: 'APC', type: 'a4' }));
+  assert.equal(store.data.stops[0].cookKey, 'job-OLD');
+  await s.stopAll();
+});
