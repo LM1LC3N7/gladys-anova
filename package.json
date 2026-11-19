@@ -1,6 +1,6 @@
 {
   "name": "gladys-anova",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Anova Precision Cookers (sous vide) and Precision Ovens for Gladys Assistant through the official Anova Developer WebSocket API: temperature, target, timer, state and alerts, a stop that is never refused, and a sous vide start behind an off-by-default option.",
   "type": "module",

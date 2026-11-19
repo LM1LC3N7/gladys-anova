@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-19
+
 ### Added
 
 - Anova Precision Cookers and Precision Ovens through the official Anova
@@ -22,3 +24,6 @@ the notes of the version's GitHub Release.
 - An option to stop a cooker when its timer ends (off by default).
 - Reconnection with backoff, 429 pause and refused token kept in `/data`,
   "Test the connection" button, docs in English and French.
+
+[Unreleased]: https://github.com/LM1LC3N7/gladys-anova/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/LM1LC3N7/gladys-anova/releases/tag/v0.1.1
