@@ -84,3 +84,4 @@ Handoff document: what is done, what was decided, what comes next.
 - Changing the target or timer of a running cook, if Anova adds it to the PAT
   commands.
 - Telemetry export (CMD_EXPORT_TELEMETRY) is not used.
+- [ ] r3 mineur : test de la sortie `skipped` de l'arrêt (mutant P6).
