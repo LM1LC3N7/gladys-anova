@@ -47,7 +47,10 @@ test('connects with the token, lists the devices, publishes their states', async
   assert.equal(url.origin, 'wss://devices.anovaculinary.io');
   assert.equal(url.searchParams.get('token'), TOKEN);
   assert.equal(url.searchParams.get('supportedAccessories'), 'APC,APO');
-  assert.match(server.sockets[0].options.headers['User-Agent'], /^gladys-anova\/0\.1\.0 \(\+https/);
+  assert.match(
+    server.sockets[0].options.headers['User-Agent'],
+    /^gladys-anova\/\d+\.\d+\.\d+ \(\+https/,
+  );
   assert.equal(server.sockets[0].options.maxPayload, 256 * 1024);
   assert.equal(s.status().connected, true);
   const devices = s.gladys.fake.discoveredDevices;

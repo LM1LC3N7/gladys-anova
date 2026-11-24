@@ -34,10 +34,9 @@ const allFields = [
   ...[...manifest.actions, ...manifest.scene_actions].flatMap((a) => a.fields ?? []),
 ];
 
-test('the store basics, and the version set by hand to 0.1.0 everywhere', () => {
+test('the store basics, and the version the same everywhere', () => {
   assert.equal(manifest.manifest_version, 1);
   assert.equal(manifest.type, 'device');
-  assert.equal(manifest.version, '0.1.0');
   assert.match(manifest.version, /^\d+\.\d+\.\d+$/);
   assert.equal(manifest.docker_image, `ghcr.io/lm1lc3n7/gladys-anova:${manifest.version}`);
   const pkg = JSON.parse(read('package.json'));
